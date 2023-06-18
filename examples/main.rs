@@ -5,10 +5,9 @@ mod rine_main_example {
     pub struct TestApplication {}
 
     impl RineApplication for TestApplication {
-        type Implementor = TestApplication;
 
-        fn create() -> TestApplication {
-            TestApplication {}
+        fn create() -> Self {
+            Self {}
         }
 
         fn handle_event<T>(&mut self, event: &winit::event::Event<T>, window_client: &rine::RineWindowClient) {

@@ -74,7 +74,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
         RineWindowClient { window, instance, surface, config, adapter, device, queue }
     };
 
-    let mut application: <A as RineApplication>::Implementor = A::create();
+    let mut application: A = A::create();
 
     event_loop.run(move |event, window_target, control_flow| {
         let _ = &window_client;
@@ -123,8 +123,7 @@ pub struct RineWindowClient {
 /// define the [RineApplication::Implementor] as the structs type
 /// (a bit recursive - yes, but im too dumb to get around that issue)
 pub trait RineApplication {
-    type Implementor: RineApplication;
-    fn create() -> Self::Implementor;
+    fn create() -> Self;
 
     /// Apply configurations to the winit window
     fn configure_window(window_builder: winit::window::WindowBuilder) -> winit::window::WindowBuilder { window_builder }
