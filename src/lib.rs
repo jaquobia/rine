@@ -66,7 +66,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
         RineWindowClient { window, instance, surface, config, adapter, device, queue }
     };
 
-    let mut application: A = A::create();
+    let mut application: A = A::create(&window_client);
 
     #[cfg(feature = "egui-int")]
     let mut egui_int = egui_integration::EguiIntegrator::new(&window_client);
@@ -249,7 +249,7 @@ impl RineWindowClient {
 /// define the [RineApplication::Implementor] as the structs type
 /// (a bit recursive - yes, but im too dumb to get around that issue)
 pub trait RineApplication {
-    fn create() -> Self;
+    fn create(window_client: &RineWindowClient) -> Self;
 
     /// Apply configurations to the winit window
     fn configure_window(window_builder: winit::window::WindowBuilder) -> winit::window::WindowBuilder { window_builder }

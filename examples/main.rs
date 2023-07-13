@@ -9,14 +9,14 @@ mod rine_main_example {
 
     impl RineApplication for TestApplication {
 
-        fn create() -> Self {
+        fn create(_window_client: &rine::RineWindowClient) -> Self {
             use winit::event::VirtualKeyCode as Key;
             let mut input_manager = rine_input_manager::InputManager::new();
             input_manager.register_input("forward", Key::W, winit::event::ModifiersState::SHIFT, rine_input_manager::InputState::Pressed | rine_input_manager::InputState::Held);
             Self { input_manager, winit_helper: winit_input_helper::WinitInputHelper::new() }
         }
 
-        fn draw(&mut self, window_client: &rine::RineWindowClient, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        fn draw(&mut self, _window_client: &rine::RineWindowClient, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
             
             let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Test(Main) Render Pass"),
@@ -40,7 +40,7 @@ mod rine_main_example {
             });
         }
 
-        fn handle_event<T>(&mut self, event: &winit::event::Event<T>, control_flow: &mut winit::event_loop::ControlFlow, window_client: &mut rine::RineWindowClient) {
+        fn handle_event<T>(&mut self, event: &winit::event::Event<T>, _control_flow: &mut winit::event_loop::ControlFlow, _window_client: &mut rine::RineWindowClient) {
             if self.winit_helper.update(event) {
                 let inputs = &self.input_manager;
                 if inputs.get_input("forward", &self.winit_helper) {
