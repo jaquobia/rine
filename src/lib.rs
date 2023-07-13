@@ -100,7 +100,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
                     ..
             } => {
                 window_client.resize_surface(size.into());
-                application.resize(&mut window_client);
+                application.resize(size.into(), &mut window_client);
             },
             winit::event::Event::WindowEvent { window_id, event } if event == winit::event::WindowEvent::Destroyed || event == winit::event::WindowEvent::CloseRequested => {
                 control_flow.set_exit();
@@ -270,7 +270,7 @@ pub trait RineApplication {
     /// Handle the polled events
     fn handle_event<T>(&mut self, event: &winit::event::Event<T>, control_flow: &mut winit::event_loop::ControlFlow, window_client: &mut RineWindowClient) {}
 
-    fn resize(&mut self, window_client: &RineWindowClient) {}
+    fn resize(&mut self, size: (u32, u32), window_client: &RineWindowClient) {}
 
     fn draw(&mut self, window_client: &RineWindowClient, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) { }
 
