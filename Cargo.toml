@@ -10,9 +10,16 @@ log = "0.4.*"
 pollster = "0.3"
 winit = "0.28.*"
 wgpu = "0.16.*"
-egui = "0.22.*"
-egui-wgpu = "0.22.*"
-egui-winit = "0.22.*"
+
+egui = { version = "0.22.*", optional = true }
+egui-wgpu = { version = "0.22.*", features = ["winit"], optional = true }
+egui-winit = { version = "0.22.*", optional = true }
+
+[features]
+egui-int = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 
 [dev-dependencies]
 simple_logger = "4.2.0"
+rine-input-manager = { git = "https://github.com/jaquobia/rine-input-manager.git" }
+# rine-input-manager = { path = "../rine-input-manager" }
+winit_input_helper = "0.14"

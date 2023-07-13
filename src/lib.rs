@@ -1,3 +1,6 @@
+#[cfg(feature = "egui-int")]
+mod egui_integration;
+
 /// Create a window (winit) and graphics api context (wgpu), then start polling events and passing it to a  
 /// [RineApplication]
 /// The application requires a custom create method, but all other methods are optional
@@ -57,18 +60,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
         None,
         )).expect("Could not find a suitable device for the adapter!");
 
-        let mut config = surface.get_default_config(&adapter, width, height).expect("Surface configuration incompatible with the adapter!");
-        let capabilities = surface.get_capabilities(&adapter);
-        let format = capabilities.formats[0].clone();
-        // let config = wgpu::SurfaceConfiguration {
-        //     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        //     view_formats: vec![],
-        //     format,
-        //     width,
-        //     height,
-        //     present_mode: wgpu::PresentMode::AutoVsync,
-        //     alpha_mode: wgpu::CompositeAlphaMode::Auto,
-        // };
+        let config = surface.get_default_config(&adapter, width, height).expect("Surface configuration incompatible with the adapter!");
         surface.configure(&device, &config);
 
         RineWindowClient { window, instance, surface, config, adapter, device, queue }
@@ -76,8 +68,27 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
 
     let mut application: A = A::create();
 
+    #[cfg(feature = "egui-int")]
+    let mut egui_int = egui_integration::EguiIntegrator::new(&window_client);
+
+    let mut system_request_redraw = false;
+    let mut gpu_redraw = false;
+
     event_loop.run(move |event, window_target, control_flow| {
         let _ = &window_client;
+        
+        #[cfg(feature = "egui-int")]
+        if let winit::event::Event::WindowEvent {event, window_id} = &event {
+            let response = egui_int.on_event(&event);
+            if response.repaint {
+                window_client.window().request_redraw(); // either use this or set the boolean
+                // system_request_redraw = true;
+            }
+            if response.consumed {
+                return;
+            }
+        }
+        
         match event {
             winit::event::Event::WindowEvent {
                 event:
@@ -88,20 +99,62 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
                     },
                     ..
             } => {
-                {
-                    let config = &mut window_client.config;
-                    config.width = size.width.max(1);
-                    config.height = size.height.max(1);
-                    window_client.surface.configure(&window_client.device, &config);
-                }
+                window_client.resize_surface(size.into());
                 application.resize(&mut window_client);
-                // rine_window_client.surface.configure(&rine_window_client.device, &rine_window_client.config);
             },
             winit::event::Event::WindowEvent { window_id, event } if event == winit::event::WindowEvent::Destroyed || event == winit::event::WindowEvent::CloseRequested => {
                 control_flow.set_exit();
-            } // Window Events
-            _ => { application.handle_event(&event, &window_client); }
+            }, // Window Events
+            winit::event::Event::RedrawRequested(window) => {
+                system_request_redraw = true;
+            },
+            winit::event::Event::MainEventsCleared => {
+                gpu_redraw = true;
+                
+            }
+            _ => { application.handle_event(&event, control_flow, &mut window_client); }
         }
+
+        if gpu_redraw { 
+            gpu_redraw = false;
+            // begin render work
+            let mut commands = vec![];
+
+            let output_frame = match window_client.surface().get_current_texture() {
+                Ok(frame) => frame,
+                // This error occurs when the app is minimized on Windows.
+                // Silently return here to prevent spamming the console with:
+                // "The underlying surface has changed, and therefore the swap chain must be updated"
+                Err(wgpu::SurfaceError::Outdated) => { return; }
+                Err(wgpu::SurfaceError::Lost) => { window_client.resize_in_place(); return; }
+                Err(wgpu::SurfaceError::OutOfMemory) => { log::error!("Ran out of memory! Shutting down!"); control_flow.set_exit(); return; }
+                Err(e) => { log::error!("Dropped frame with error: {}", e); return; }
+            };
+            let output_view = output_frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            
+            let mut encoder = window_client.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Rine main(render) thread encoder"),
+            });
+
+            application.draw(&window_client, &mut encoder, &output_view);
+
+            // redraw elements that update every frame
+            if system_request_redraw {
+                system_request_redraw = false;
+                // redraw all elements that only need to be appplied on dirty
+            } // if system redraw
+
+            #[cfg(feature = "egui-int")]
+            egui_int.redraw(&window_client, &mut commands, &mut encoder, &output_view, &mut application);
+            commands.extend(std::iter::once(encoder.finish()));
+
+            // submit render work
+            window_client.queue().submit(commands.into_iter());
+            output_frame.present();
+        }
+
     });
 }
 
@@ -109,13 +162,86 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
 /// Holds all the necessary structs for manipulating the gpu
 /// and window
 pub struct RineWindowClient {
-    pub window: winit::window::Window,
-    pub instance: wgpu::Instance,
-    pub surface: wgpu::Surface,
-    pub config: wgpu::SurfaceConfiguration,
-    pub adapter: wgpu::Adapter,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
+    window: winit::window::Window,
+    instance: wgpu::Instance,
+    surface: wgpu::Surface,
+    config: wgpu::SurfaceConfiguration,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+}
+
+impl RineWindowClient {
+
+    /// Get reference to the winit window handle
+    pub fn window(&self) -> &winit::window::Window {
+        &self.window
+    }
+
+    /// Get reference to the wgpu instance
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self.instance
+    }
+
+    /// Get reference to the wgpu surface
+    /// Might add mutable accessor incase hal backend is needed
+    pub fn surface(&self) -> &wgpu::Surface {
+        &self.surface
+    }
+
+    /// Get reference to the wgpu surface configuration
+    /// Might add mutator functions for the config fields
+    pub fn config(&self) -> &wgpu::SurfaceConfiguration {
+        &self.config
+    }
+
+    /// Get reference to the wgpu adapter
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.adapter
+    }
+
+    /// Get reference to the wgpu device
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    /// Get reference to the wgpu queue
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    /// The window has changed, resize the framebuffer
+    pub fn resize_surface(&mut self, new_size: (u32, u32)) {
+        if new_size.0 > 0 && new_size.1 > 0 {
+            self.config.width = new_size.0.max(1);
+            self.config.height = new_size.1.max(1);
+            self.surface.configure(&self.device, &self.config);
+        }
+    }
+
+    /// Should be called whenever the surface is lost [wgpu::SurfacrError::Lost]
+    pub fn resize_in_place(&mut self) {
+        self.resize_surface((self.config.width, self.config.height));
+    }
+
+    /// Returns whether vsync is enabled
+    pub fn get_vsync(&self) -> bool {
+        self.config.present_mode == wgpu::PresentMode::AutoVsync
+    }
+
+    /// Change the state of vsync
+    pub fn set_vsync(&mut self, vsync: bool) {
+        self.config.present_mode = if vsync {
+            wgpu::PresentMode::AutoVsync
+        } else {
+            wgpu::PresentMode::AutoNoVsync
+        };
+    }
+
+    /// Toggle the state of vsync
+    pub fn toggle_vsync(&mut self) {
+        self.set_vsync(self.config.present_mode == wgpu::PresentMode::AutoNoVsync);
+    }
 }
 
 /// Defines the interface necessary for an application to run
@@ -142,7 +268,14 @@ pub trait RineApplication {
     fn gpu_limits() -> wgpu::Limits { wgpu::Limits::default() }
 
     /// Handle the polled events
-    fn handle_event<T>(&mut self, event: &winit::event::Event<T>, window_client: &RineWindowClient) {}
+    fn handle_event<T>(&mut self, event: &winit::event::Event<T>, control_flow: &mut winit::event_loop::ControlFlow, window_client: &mut RineWindowClient) {}
 
     fn resize(&mut self, window_client: &RineWindowClient) {}
+
+    fn draw(&mut self, window_client: &RineWindowClient, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) { }
+
+    // fn draw_requested(&mut self, window_client: &RineWindowClient) -> Vec<wgpu::CommandBuffer> { vec![] }
+
+    #[cfg(feature = "egui-int")]
+    fn egui_draw(&mut self, ctx: &egui::Context) {}
 }
