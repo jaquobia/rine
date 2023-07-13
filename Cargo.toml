@@ -16,6 +16,7 @@ egui-wgpu = { version = "0.22.*", features = ["winit"], optional = true }
 egui-winit = { version = "0.22.*", optional = true }
 
 [features]
+default = ["egui-int"]
 egui-int = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 
 [dev-dependencies]

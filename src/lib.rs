@@ -2,7 +2,7 @@
 mod egui_integration;
 
 #[cfg(feature = "egui-int")]
-pub mod egui;
+pub use egui;
 
 /// Create a window (winit) and graphics api context (wgpu), then start polling events and passing it to a  
 /// [RineApplication]
