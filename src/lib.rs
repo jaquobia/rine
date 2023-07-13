@@ -74,7 +74,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
     let mut system_request_redraw = false;
     let mut gpu_redraw = false;
 
-    event_loop.run(move |event, window_target, control_flow| {
+    event_loop.run(move |event, _window_target, control_flow| {
         let _ = &window_client;
         
         #[cfg(feature = "egui-int")]
@@ -102,14 +102,15 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
                 window_client.resize_surface(size.into());
                 application.resize(size.into(), &mut window_client);
             },
-            winit::event::Event::WindowEvent { window_id, event } if event == winit::event::WindowEvent::Destroyed || event == winit::event::WindowEvent::CloseRequested => {
+            winit::event::Event::WindowEvent { window_id: _, event } if event == winit::event::WindowEvent::Destroyed || event == winit::event::WindowEvent::CloseRequested => {
                 control_flow.set_exit();
             }, // Window Events
-            winit::event::Event::RedrawRequested(window) => {
+            winit::event::Event::RedrawRequested(_window) => {
                 system_request_redraw = true;
             },
             winit::event::Event::MainEventsCleared => {
                 gpu_redraw = true;
+                application.handle_event(&event, control_flow, &mut window_client);
                 
             }
             _ => { application.handle_event(&event, control_flow, &mut window_client); }
