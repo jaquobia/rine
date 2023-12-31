@@ -1,3 +1,5 @@
+use egui::ViewportId;
+
 use crate::RineApplication;
 
 pub struct EguiIntegrator {
@@ -8,15 +10,16 @@ pub struct EguiIntegrator {
 
 impl EguiIntegrator {
     pub(crate) fn new(window_client: &crate::RineWindowClient) -> Self {
+        let viewport_id = ViewportId::default();
         Self {
-            state: egui_winit::State::new(window_client.window()),
+            state: egui_winit::State::new(viewport_id, window_client.window(), None, None),
             context: egui::Context::default(),
             renderer: egui_wgpu::Renderer::new(window_client.device(), window_client.config().format, None, 1),
         }
     }
 
-    pub fn on_event(&mut self, event: &winit::event::WindowEvent<'_>) -> egui_winit::EventResponse {
-        self.state.on_event(&self.context, event)
+    pub fn on_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse {
+        self.state.on_window_event(&self.context, event)
     }
 
     pub fn redraw<A: RineApplication>(&mut self, window_client: &crate::RineWindowClient, commands: &mut Vec<wgpu::CommandBuffer>, encoder: &mut wgpu::CommandEncoder, framebuffer_view: &wgpu::TextureView, application: &mut A) {
@@ -57,10 +60,12 @@ impl EguiIntegrator {
                     //     b: 0.0,
                     //     a: 0.0,
                     // }),
-                    store: true,
+                    store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None
         });
 
         self.renderer.render(&mut render_pass, &paint_jobs, &screen_descriptor);

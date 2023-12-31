@@ -9,7 +9,7 @@ pub use egui;
 /// The application requires a custom create method, but all other methods are optional
 /// for customizing the window and graphics api
 pub fn start_rine_application<A: RineApplication + 'static>() {
-    let event_loop = winit::event_loop::EventLoop::new();
+    let event_loop = winit::event_loop::EventLoop::new().unwrap();
     let window_builder = A::configure_window(winit::window::WindowBuilder::new().with_title("Rine Application!"));
     let window = match window_builder.build(&event_loop) {
         Ok(window) => window,
@@ -32,7 +32,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
         };
 
         let adapter =
-            pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, Some(&surface)))
+            pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, Some(&surface)))
             .expect("No suitable GPU adapters found on the system!");
         log::info!("Created gpu adapter: {:?}", adapter.get_info());
 
@@ -77,7 +77,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
     let mut system_request_redraw = false;
     let mut gpu_redraw = false;
 
-    event_loop.run(move |event, _window_target, control_flow| {
+    let _ = event_loop.run(move |event, elwt| {
         let _ = &window_client;
         
         #[cfg(feature = "egui-int")]
@@ -93,30 +93,24 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
         }
         
         match event {
-            winit::event::Event::WindowEvent {
-                event:
-                    winit::event::WindowEvent::Resized(size)
-                    | winit::event::WindowEvent::ScaleFactorChanged {
-                        new_inner_size: &mut size,
-                        ..
-                    },
-                    ..
+            winit::event::Event::WindowEvent { 
+                event: winit::event::WindowEvent::Resized(size), ..
             } => {
                 window_client.resize_surface(size.into());
                 application.resize(size.into(), &mut window_client);
             },
             winit::event::Event::WindowEvent { window_id: _, event } if event == winit::event::WindowEvent::Destroyed || event == winit::event::WindowEvent::CloseRequested => {
-                control_flow.set_exit();
+                elwt.exit();
             }, // Window Events
-            winit::event::Event::RedrawRequested(_window) => {
+            winit::event::Event::WindowEvent { event: winit::event::WindowEvent::RedrawRequested, .. } => {
                 system_request_redraw = true;
             },
-            winit::event::Event::MainEventsCleared => {
+            winit::event::Event::AboutToWait => {
                 gpu_redraw = true;
-                application.handle_event(&event, control_flow, &mut window_client);
+                if application.handle_event(&event, &mut window_client) { elwt.exit(); }
                 
             }
-            _ => { application.handle_event(&event, control_flow, &mut window_client); }
+            _ => { if application.handle_event(&event, &mut window_client) { elwt.exit(); } }
         }
 
         if gpu_redraw { 
@@ -131,7 +125,7 @@ pub fn start_rine_application<A: RineApplication + 'static>() {
                 // "The underlying surface has changed, and therefore the swap chain must be updated"
                 Err(wgpu::SurfaceError::Outdated) => { return; }
                 Err(wgpu::SurfaceError::Lost) => { window_client.resize_in_place(); return; }
-                Err(wgpu::SurfaceError::OutOfMemory) => { log::error!("Ran out of memory! Shutting down!"); control_flow.set_exit(); return; }
+                Err(wgpu::SurfaceError::OutOfMemory) => { log::error!("Ran out of memory! Shutting down!"); elwt.exit(); return; }
                 Err(e) => { log::error!("Dropped frame with error: {}", e); return; }
             };
             let output_view = output_frame
@@ -272,7 +266,8 @@ pub trait RineApplication {
     fn gpu_limits() -> wgpu::Limits { wgpu::Limits::default() }
 
     /// Handle the polled events
-    fn handle_event<T>(&mut self, event: &winit::event::Event<T>, control_flow: &mut winit::event_loop::ControlFlow, window_client: &mut RineWindowClient) {}
+    /// return true to exit the application
+    fn handle_event<T>(&mut self, event: &winit::event::Event<T>, window_client: &mut RineWindowClient) -> bool { false }
 
     fn resize(&mut self, size: (u32, u32), window_client: &RineWindowClient) {}
 
